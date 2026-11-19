@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversor de Temperatura en Termómetros</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* Variables dinámicas para el color del líquido (rojo > 15 °C, azul <= 15 °C) */
+    :root {
+      --liquid-color: #ef4444;
+      --liquid-glow: rgba(239, 68, 68, 0.38);
+      --liquid-dark: #991b1b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #ffffff;
+      color: #0f172a;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Tarjeta de cada termómetro */
+    .thermometer-card {
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      border-radius: 1.35rem;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+      cursor: pointer;
+    }
+
+    .thermometer-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.09);
+    }
+
+    .thermometer-card.card-source {
+      border-color: #0f172a;
+      background: #ffffff;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
+    }
+
+    .thermometer-card.card-target {
+      border-color: var(--liquid-color);
+      background: #ffffff;
+    }
+
+    /* Escenario del termómetro: escala graduada + tubo + menisco + bulbo */
+    .thermo-stage {
+      position: relative;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      width: 100%;
+      max-width: 172px;
+      margin: 0 auto;
+      padding-top: 8px;
+      user-select: none;
+    }
+
+    /* Valores numéricos y marcas laterales */
+    .thermo-scale-labels {
+      position: relative;
+      height: 196px;
+      width: 48px;
+      margin-bottom: 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 9.5px;
+      font-weight: 700;
+      color: #475569;
+      text-align: right;
+      padding-right: 5px;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-stage {
+        max-width: 215px;
+      }
+      .thermo-scale-labels {
+        height: 244px;
+        width: 64px;
+        margin-bottom: 52px;
+        font-size: 11px;
+        padding-right: 8px;
+      }
+    }
+
+    .scale-mark {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      line-height: 1;
+      height: 0;
+    }
+
+    .scale-mark::after {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 1.5px;
+      background-color: #64748b;
+      margin-left: 3px;
+    }
+
+    /* Ensamblaje del tubo y bulbo */
+    .thermo-assembly {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 52px;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-assembly {
+        width: 64px;
+      }
+    }
+
+    /* Tubo vertical de cristal */
+    .thermo-tube {
+      position: relative;
+      width: 24px;
+      height: 196px;
+      background: linear-gradient(90deg, #e2e8f0 0%, #f8fafc 46%, #cbd5e1 100%);
+      border: 2.5px solid #94a3b8;
+      border-bottom: none;
+      border-radius: 9999px 9999px 0 0;
+      box-shadow: inset 0 3px 8px rgba(15, 23, 42, 0.14);
+      overflow: visible;
+      z-index: 2;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-tube {
+        width: 30px;
+        height: 244px;
+        border-width: 3px;
+      }
+    }
+
+    /* Recorte interior del tubo */
+    .thermo-inner-clip {
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px 9999px 0 0;
+      overflow: hidden;
+    }
+
+    /* Reflejo vertical del vidrio */
+    .thermo-inner-clip::after {
+      content: "";
+      position: absolute;
+      top: 8px;
+      left: 3.5px;
+      width: 3.5px;
+      height: calc(100% - 14px);
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 9999px;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* Marcas graduadas internas del tubo */
+    .thermo-ticks {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .tick {
+      height: 1.5px;
+      background: rgba(51, 65, 85, 0.38);
+      margin-left: auto;
+    }
+
+    .tick.major {
+      width: 11px;
+      background: rgba(15, 23, 42, 0.65);
+    }
+
+    .tick.minor {
+      width: 6px;
+    }
+
+    /* Columna líquida con altura dinámica */
+    .thermo-liquid {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 35%;
+      background: linear-gradient(90deg, var(--liquid-dark) 0%, var(--liquid-color) 44%, #ffffff99 72%, var(--liquid-color) 100%);
+      box-shadow: 0 0 12px var(--liquid-glow);
+      transition: height 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.35s ease, box-shadow 0.35s ease;
+      z-index: 1;
+    }
+
+    /* Borde superior brillante del menisco */
+    .thermo-liquid::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    /* Etiqueta flotante en el menisco */
+    .thermo-meniscus-tag {
+      position: absolute;
+      left: calc(100% + 4px);
+      bottom: 35%;
+      transform: translateY(50%);
+      background: var(--liquid-color);
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 1.5px 4.5px;
+      border-radius: 5px;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+      transition: bottom 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.35s ease;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .thermo-meniscus-tag::before {
+      content: "";
+      position: absolute;
+      right: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      border-width: 4px;
+      border-style: solid;
+      border-color: transparent var(--liquid-color) transparent transparent;
+      transition: border-color 0.35s ease;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-meniscus-tag {
+        left: calc(100% + 6px);
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    }
+
+    /* Bulbo inferior del termómetro */
+    .thermo-bulb {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      margin-top: -7px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 32% 30%, #ffffffdd 0%, var(--liquid-color) 40%, var(--liquid-dark) 100%);
+      border: 2.5px solid #94a3b8;
+      box-shadow: 0 6px 16px var(--liquid-glow), inset 0 -4px 8px rgba(0, 0, 0, 0.25);
+      transition: background 0.35s ease, box-shadow 0.35s ease;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-bulb {
+        width: 60px;
+        height: 60px;
+        margin-top: -9px;
+        border-width: 3px;
+      }
+    }
+
+    /* Unión continua entre el tubo y el bulbo */
+    .thermo-neck {
+      position: absolute;
+      bottom: 38px;
+      width: 19px;
+      height: 13px;
+      background: var(--liquid-color);
+      transition: background 0.35s ease;
+      z-index: 3;
+    }
+
+    @media (min-width: 640px) {
+      .thermo-neck {
+        bottom: 47px;
+        width: 24px;
+        height: 15px;
+      }
+    }
+
+    /* Control deslizante */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 12px;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #2563eb 0%, #38bdf8 32%, #fb923c 65%, #ef4444 100%);
+      border: 1px solid #cbd5e1;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 4px solid var(--liquid-color);
+      margin-top: -9px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+      transition: border-color 0.35s ease, transform 0.15s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+
+    input[type="range"]::-moz-range-track {
+      height: 12px;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #2563eb 0%, #38bdf8 32%, #fb923c 65%, #ef4444 100%);
+      border: 1px solid #cbd5e1;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 4px solid var(--liquid-color);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+    }
+  </style>
+</head>
+<body class="px-3 py-5 sm:p-6 md:p-8 flex flex-col items-center justify-start bg-white text-slate-900">
+
+  <!-- Título principal -->
+  <header class="w-full max-w-5xl text-center mb-5 sm:mb-6">
+    <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+      Conversor de Temperatura
+    </h1>
+  </header>
+
+  <!-- Panel superior de selección y entrada -->
+  <section class="w-full max-w-5xl bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-xs">
+
+    <!-- Selectores de escala de origen, inversión y destino principal -->
+    <div class="pb-4 mb-4 border-b border-slate-200">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5 sm:gap-4 max-w-3xl mx-auto">
+        <div class="flex-1">
+          <label for="fromScale" class="block text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-1">
+            CONVERTIR DE:
+          </label>
+          <select id="fromScale" class="w-full h-11 px-3 rounded-xl bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-bold text-slate-900 cursor-pointer">
+            <option value="C" selected>Celsius (°C)</option>
+            <option value="F">Fahrenheit (°F)</option>
+            <option value="K">Kelvin (K)</option>
+            <option value="R">Rankine (°R)</option>
+          </select>
+        </div>
+
+        <div class="flex justify-center">
+          <button id="btnSwap" type="button" title="Invertir escalas" aria-label="Invertir escalas"
+            class="h-11 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95">
+            <span>⇄</span>
+          </button>
+        </div>
+
+        <div class="flex-1">
+          <label for="toScale" class="block text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-1">
+            A:
+          </label>
+          <select id="toScale" class="w-full h-11 px-3 rounded-xl bg-white border-2 border-slate-300 focus:border-slate-900 focus:outline-none text-sm font-bold text-slate-900 cursor-pointer">
+            <option value="C">Celsius (°C)</option>
+            <option value="F" selected>Fahrenheit (°F)</option>
+            <option value="K">Kelvin (K)</option>
+            <option value="R">Rankine (°R)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controles de valor de entrada y barra deslizante -->
+    <div class="flex flex-col lg:flex-row items-center justify-between gap-5 sm:gap-6">
+
+      <!-- Entrada numérica con botones - y + e indicador de unidad dinámico -->
+      <div class="w-full lg:w-auto flex flex-col items-center lg:items-start">
+        <label for="tempInput" class="text-xs uppercase tracking-wider font-bold text-slate-500 mb-1.5">
+          VALOR DE ENTRADA
+        </label>
+        <div class="flex items-center justify-center gap-2">
+          <button id="btnDecrease" type="button" aria-label="Bajar temperatura"
+            class="w-12 h-12 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 font-bold text-2xl flex items-center justify-center transition active:scale-95">
+            −
+          </button>
+          <input
+            id="tempInput"
+            type="number"
+            value="20"
+            step="any"
+            class="w-32 sm:w-36 text-center text-2xl sm:text-3xl font-extrabold bg-white text-slate-900 border-2 border-slate-300 focus:border-slate-900 focus:outline-none rounded-xl py-2 px-2 sm:px-3 shadow-inner"
+          />
+          <span id="unitBadge" class="inline-flex items-center justify-center min-w-[2.6rem] h-11 px-2.5 rounded-xl bg-slate-200 text-slate-900 text-lg sm:text-xl font-extrabold">
+            °C
+          </span>
+          <button id="btnIncrease" type="button" aria-label="Subir temperatura"
+            class="w-12 h-12 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold text-2xl flex items-center justify-center transition active:scale-95">
+            +
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra deslizante calibrada a la escala de origen -->
+      <div class="w-full flex-1 flex flex-col justify-center gap-2">
+        <div class="flex justify-between text-[11px] sm:text-xs font-semibold text-slate-500 px-1">
+          <span id="sliderMinLabel" class="text-blue-600">Mín: -50 °C</span>
+          <span id="sliderThresholdLabel" class="text-slate-600">Umbral: 15 °C</span>
+          <span id="sliderMaxLabel" class="text-red-600">Máx: 150 °C</span>
+        </div>
+        <input
+          id="tempSlider"
+          type="range"
+          min="-50"
+          max="150"
+          step="0.5"
+          value="20"
+          class="w-full h-8"
+        />
+      </div>
+    </div>
+  </section>
+
+  <!-- Cuadrícula de 4 termómetros: 2x2 en celular y 4 columnas en escritorio -->
+  <main class="w-full max-w-6xl grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4">
+
+    <!-- Termómetro Celsius (°C) -->
+    <article id="cardC" data-scale="C" class="thermometer-card card-source p-3 sm:p-5 flex flex-col items-center text-center" title="Toca para usar Celsius (°C) como origen">
+      <div class="w-full flex items-center justify-between mb-1">
+        <span class="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Celsius</span>
+        <span id="badgeC" class="text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-900 text-white">Origen</span>
+      </div>
+      <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">°C</h2>
+
+      <div class="thermo-stage my-1">
+        <div class="thermo-scale-labels" aria-hidden="true">
+          <div class="scale-mark">150°</div>
+          <div class="scale-mark">125°</div>
+          <div class="scale-mark">100°</div>
+          <div class="scale-mark">75°</div>
+          <div class="scale-mark">50°</div>
+          <div class="scale-mark">25°</div>
+          <div class="scale-mark">0°</div>
+          <div class="scale-mark">-25°</div>
+          <div class="scale-mark">-50°</div>
+        </div>
+        <div class="thermo-assembly">
+          <div class="thermo-tube">
+            <div class="thermo-inner-clip">
+              <div class="thermo-ticks">
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+              </div>
+              <div id="liquidC" class="thermo-liquid"></div>
+            </div>
+            <div id="tagC" class="thermo-meniscus-tag">20.0°</div>
+          </div>
+          <div class="thermo-neck"></div>
+          <div class="thermo-bulb">
+            <span class="text-xs font-extrabold text-white drop-shadow">°C</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 w-full bg-white border border-slate-200 rounded-xl py-2 px-2 sm:py-2.5 sm:px-3">
+        <p id="valC" class="text-base sm:text-xl font-extrabold text-slate-900 truncate">20.00 °C</p>
+        <p id="subC" class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 truncate">Escala de entrada</p>
+      </div>
+    </article>
+
+    <!-- Termómetro Fahrenheit (°F) -->
+    <article id="cardF" data-scale="F" class="thermometer-card card-target p-3 sm:p-5 flex flex-col items-center text-center" title="Toca para usar Fahrenheit (°F) como origen">
+      <div class="w-full flex items-center justify-between mb-1">
+        <span class="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Fahrenheit</span>
+        <span id="badgeF" class="text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700">Destino</span>
+      </div>
+      <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">°F</h2>
+
+      <div class="thermo-stage my-1">
+        <div class="thermo-scale-labels" aria-hidden="true">
+          <div class="scale-mark">302°</div>
+          <div class="scale-mark">257°</div>
+          <div class="scale-mark">212°</div>
+          <div class="scale-mark">167°</div>
+          <div class="scale-mark">122°</div>
+          <div class="scale-mark">77°</div>
+          <div class="scale-mark">32°</div>
+          <div class="scale-mark">-13°</div>
+          <div class="scale-mark">-58°</div>
+        </div>
+        <div class="thermo-assembly">
+          <div class="thermo-tube">
+            <div class="thermo-inner-clip">
+              <div class="thermo-ticks">
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+              </div>
+              <div id="liquidF" class="thermo-liquid"></div>
+            </div>
+            <div id="tagF" class="thermo-meniscus-tag">68.0°</div>
+          </div>
+          <div class="thermo-neck"></div>
+          <div class="thermo-bulb">
+            <span class="text-xs font-extrabold text-white drop-shadow">°F</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 w-full bg-white border border-slate-200 rounded-xl py-2 px-2 sm:py-2.5 sm:px-3">
+        <p id="valF" class="text-base sm:text-xl font-extrabold text-slate-900 truncate">68.00 °F</p>
+        <p id="subF" class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 truncate">(°C × 9/5) + 32</p>
+      </div>
+    </article>
+
+    <!-- Termómetro Kelvin (K) -->
+    <article id="cardK" data-scale="K" class="thermometer-card p-3 sm:p-5 flex flex-col items-center text-center" title="Toca para usar Kelvin (K) como origen">
+      <div class="w-full flex items-center justify-between mb-1">
+        <span class="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Kelvin</span>
+        <span id="badgeK" class="text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 opacity-0">—</span>
+      </div>
+      <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">K</h2>
+
+      <div class="thermo-stage my-1">
+        <div class="thermo-scale-labels" aria-hidden="true">
+          <div class="scale-mark">423.15</div>
+          <div class="scale-mark">398.15</div>
+          <div class="scale-mark">373.15</div>
+          <div class="scale-mark">348.15</div>
+          <div class="scale-mark">323.15</div>
+          <div class="scale-mark">298.15</div>
+          <div class="scale-mark">273.15</div>
+          <div class="scale-mark">248.15</div>
+          <div class="scale-mark">223.15</div>
+        </div>
+        <div class="thermo-assembly">
+          <div class="thermo-tube">
+            <div class="thermo-inner-clip">
+              <div class="thermo-ticks">
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+              </div>
+              <div id="liquidK" class="thermo-liquid"></div>
+            </div>
+            <div id="tagK" class="thermo-meniscus-tag">293.2</div>
+          </div>
+          <div class="thermo-neck"></div>
+          <div class="thermo-bulb">
+            <span class="text-xs font-extrabold text-white drop-shadow">K</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 w-full bg-white border border-slate-200 rounded-xl py-2 px-2 sm:py-2.5 sm:px-3">
+        <p id="valK" class="text-base sm:text-xl font-extrabold text-slate-900 truncate">293.15 K</p>
+        <p id="subK" class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 truncate">°C + 273.15</p>
+      </div>
+    </article>
+
+    <!-- Termómetro Rankine (°R) -->
+    <article id="cardR" data-scale="R" class="thermometer-card p-3 sm:p-5 flex flex-col items-center text-center" title="Toca para usar Rankine (°R) como origen">
+      <div class="w-full flex items-center justify-between mb-1">
+        <span class="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Rankine</span>
+        <span id="badgeR" class="text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 opacity-0">—</span>
+      </div>
+      <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">°R</h2>
+
+      <div class="thermo-stage my-1">
+        <div class="thermo-scale-labels" aria-hidden="true">
+          <div class="scale-mark">761.67</div>
+          <div class="scale-mark">716.67</div>
+          <div class="scale-mark">671.67</div>
+          <div class="scale-mark">626.67</div>
+          <div class="scale-mark">581.67</div>
+          <div class="scale-mark">536.67</div>
+          <div class="scale-mark">491.67</div>
+          <div class="scale-mark">446.67</div>
+          <div class="scale-mark">401.67</div>
+        </div>
+        <div class="thermo-assembly">
+          <div class="thermo-tube">
+            <div class="thermo-inner-clip">
+              <div class="thermo-ticks">
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+                <div class="tick minor"></div>
+                <div class="tick major"></div>
+              </div>
+              <div id="liquidR" class="thermo-liquid"></div>
+            </div>
+            <div id="tagR" class="thermo-meniscus-tag">527.7°</div>
+          </div>
+          <div class="thermo-neck"></div>
+          <div class="thermo-bulb">
+            <span class="text-xs font-extrabold text-white drop-shadow">°R</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 w-full bg-white border border-slate-200 rounded-xl py-2 px-2 sm:py-2.5 sm:px-3">
+        <p id="valR" class="text-base sm:text-xl font-extrabold text-slate-900 truncate">527.67 °R</p>
+        <p id="subR" class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 truncate">(°C + 273.15) × 9/5</p>
+      </div>
+    </article>
+
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const root = document.documentElement;
+
+      // Elementos de control
+      const fromScaleSelect = document.getElementById('fromScale');
+      const toScaleSelect = document.getElementById('toScale');
+      const btnSwap = document.getElementById('btnSwap');
+      const tempInput = document.getElementById('tempInput');
+      const unitBadge = document.getElementById('unitBadge');
+      const tempSlider = document.getElementById('tempSlider');
+      const btnDecrease = document.getElementById('btnDecrease');
+      const btnIncrease = document.getElementById('btnIncrease');
+      const sliderMinLabel = document.getElementById('sliderMinLabel');
+      const sliderThresholdLabel = document.getElementById('sliderThresholdLabel');
+      const sliderMaxLabel = document.getElementById('sliderMaxLabel');
+
+      // Elementos de cada termómetro
+      const scales = ['C', 'F', 'K', 'R'];
+      const cards = {
+        C: document.getElementById('cardC'),
+        F: document.getElementById('cardF'),
+        K: document.getElementById('cardK'),
+        R: document.getElementById('cardR')
+      };
+      const badges = {
+        C: document.getElementById('badgeC'),
+        F: document.getElementById('badgeF'),
+        K: document.getElementById('badgeK'),
+        R: document.getElementById('badgeR')
+      };
+      const valEls = {
+        C: document.getElementById('valC'),
+        F: document.getElementById('valF'),
+        K: document.getElementById('valK'),
+        R: document.getElementById('valR')
+      };
+      const subEls = {
+        C: document.getElementById('subC'),
+        F: document.getElementById('subF'),
+        K: document.getElementById('subK'),
+        R: document.getElementById('subR')
+      };
+      const liquidEls = {
+        C: document.getElementById('liquidC'),
+        F: document.getElementById('liquidF'),
+        K: document.getElementById('liquidK'),
+        R: document.getElementById('liquidR')
+      };
+      const tagEls = {
+        C: document.getElementById('tagC'),
+        F: document.getElementById('tagF'),
+        K: document.getElementById('tagK'),
+        R: document.getElementById('tagR')
+      };
+
+      // Rangos y umbrales calibrados por escala
+      const SCALE_META = {
+        C: { unit: '°C', sliderMin: -50, sliderMax: 150, threshold: 15 },
+        F: { unit: '°F', sliderMin: -58, sliderMax: 302, threshold: 59 },
+        K: { unit: 'K', sliderMin: 223.15, sliderMax: 423.15, threshold: 288.15 },
+        R: { unit: '°R', sliderMin: 401.67, sliderMax: 761.67, threshold: 518.67 }
+      };
+
+      // Fórmulas entre escalas
+      const FORMULAS = {
+        'C->C': '°C = °C',
+        'C->F': '(°C × 9/5) + 32',
+        'C->K': '°C + 273.15',
+        'C->R': '(°C + 273.15) × 9/5',
+
+        'F->C': '(°F − 32) × 5/9',
+        'F->F': '°F = °F',
+        'F->K': '(°F − 32) × 5/9 + 273.15',
+        'F->R': '°F + 459.67',
+
+        'K->C': 'K − 273.15',
+        'K->F': '(K − 273.15) × 9/5 + 32',
+        'K->K': 'K = K',
+        'K->R': 'K × 9/5',
+
+        'R->C': '(°R − 491.67) × 5/9',
+        'R->F': '°R − 459.67',
+        'R->K': '°R × 5/9',
+        'R->R': '°R = °R'
+      };
+
+      // Estado central en Celsius
+      const state = {
+        from: 'C',
+        to: 'F',
+        celsius: 20
+      };
+
+      function toCelsius(value, scale) {
+        switch (scale) {
+          case 'C': return value;
+          case 'F': return (value - 32) * (5 / 9);
+          case 'K': return value - 273.15;
+          case 'R': return (value - 491.67) * (5 / 9);
+          default: return value;
+        }
+      }
+
+      function fromCelsiusAll(c) {
+        return {
+          C: c,
+          F: (c * (9 / 5)) + 32,
+          K: c + 273.15,
+          R: (c + 273.15) * (9 / 5)
+        };
+      }
+
+      const SCALE_MIN_C = -50;
+      const SCALE_MAX_C = 150;
+      const THRESHOLD_C = 15;
+
+      function getClampedLiquidPercent(c) {
+        const rawPct = ((c - SCALE_MIN_C) / (SCALE_MAX_C - SCALE_MIN_C)) * 100;
+        return Math.max(0, Math.min(100, rawPct));
+      }
+
+      function formatScaleValue(num) {
+        const rounded = Math.round(num * 100) / 100;
+        return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+      }
+
+      function syncOriginControls(updateInputValue) {
+        const meta = SCALE_META[state.from];
+        const allVals = fromCelsiusAll(state.celsius);
+        const valInOrigin = Number(allVals[state.from].toFixed(2));
+
+        // Actualizar símbolo de unidad dinámico junto al campo de entrada
+        unitBadge.textContent = meta.unit;
+
+        // Actualizar límites y etiquetas del deslizador en la escala de origen
+        tempSlider.min = meta.sliderMin;
+        tempSlider.max = meta.sliderMax;
+        sliderMinLabel.textContent = `Mín: ${meta.sliderMin} ${meta.unit}`;
+        sliderThresholdLabel.textContent = `Umbral: ${meta.threshold} ${meta.unit}`;
+        sliderMaxLabel.textContent = `Máx: ${meta.sliderMax} ${meta.unit}`;
+
+        if (updateInputValue) {
+          tempInput.value = formatScaleValue(valInOrigin);
+        }
+        tempSlider.value = Math.max(meta.sliderMin, Math.min(meta.sliderMax, valInOrigin));
+      }
+
+      function renderThermometers() {
+        const vals = fromCelsiusAll(state.celsius);
+        const liquidPct = getClampedLiquidPercent(state.celsius);
+        const isHot = state.celsius > THRESHOLD_C;
+
+        // Color del líquido y bulbo según umbral de 15 °C
+        if (isHot) {
+          root.style.setProperty('--liquid-color', '#ef4444');
+          root.style.setProperty('--liquid-glow', 'rgba(239, 68, 68, 0.42)');
+          root.style.setProperty('--liquid-dark', '#991b1b');
+        } else {
+          root.style.setProperty('--liquid-color', '#3b82f6');
+          root.style.setProperty('--liquid-glow', 'rgba(59, 130, 246, 0.42)');
+          root.style.setProperty('--liquid-dark', '#1d4ed8');
+        }
+
+        scales.forEach((sc) => {
+          const meta = SCALE_META[sc];
+          const num = vals[sc];
+
+          valEls[sc].textContent = `${num.toFixed(2)} ${meta.unit}`;
+          subEls[sc].textContent = sc === state.from
+            ? 'Escala de entrada'
+            : FORMULAS[`${state.from}->${sc}`];
+
+          liquidEls[sc].style.height = `${liquidPct}%`;
+          tagEls[sc].style.bottom = `${liquidPct}%`;
+          tagEls[sc].textContent = sc === 'K' ? `${num.toFixed(1)}` : `${num.toFixed(1)}°`;
+
+          cards[sc].classList.remove('card-source', 'card-target');
+          if (sc === state.from) {
+            cards[sc].classList.add('card-source');
+            badges[sc].textContent = 'Origen';
+            badges[sc].className = 'text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-900 text-white opacity-100';
+          } else if (sc === state.to) {
+            cards[sc].classList.add('card-target');
+            badges[sc].textContent = 'Destino';
+            badges[sc].className = isHot
+              ? 'text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700 opacity-100'
+              : 'text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 opacity-100';
+          } else {
+            badges[sc].textContent = '—';
+            badges[sc].className = 'text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 opacity-0';
+          }
+        });
+      }
+
+      function handleValueChange(rawValue) {
+        const parsed = parseFloat(rawValue);
+        if (Number.isNaN(parsed)) return;
+
+        const meta = SCALE_META[state.from];
+        state.celsius = toCelsius(parsed, state.from);
+        tempSlider.value = Math.max(meta.sliderMin, Math.min(meta.sliderMax, parsed));
+        renderThermometers();
+      }
+
+      function applyFromScale(newFrom) {
+        if (!SCALE_META[newFrom]) return;
+        if (newFrom === state.to) {
+          state.to = state.from;
+          toScaleSelect.value = state.to;
+        }
+        state.from = newFrom;
+        fromScaleSelect.value = state.from;
+        syncOriginControls(true);
+        renderThermometers();
+      }
+
+      function applyToScale(newTo) {
+        if (!SCALE_META[newTo]) return;
+        state.to = newTo;
+        toScaleSelect.value = state.to;
+        renderThermometers();
+      }
+
+      // Listeners de selectores y botón invertir
+      fromScaleSelect.addEventListener('change', (e) => applyFromScale(e.target.value));
+      toScaleSelect.addEventListener('change', (e) => applyToScale(e.target.value));
+
+      btnSwap.addEventListener('click', () => {
+        const previousFrom = state.from;
+        state.from = state.to;
+        state.to = previousFrom;
+        fromScaleSelect.value = state.from;
+        toScaleSelect.value = state.to;
+        syncOriginControls(true);
+        renderThermometers();
+      });
+
+      // Listeners de entrada numérica
+      tempInput.addEventListener('input', (e) => handleValueChange(e.target.value));
+      tempInput.addEventListener('change', (e) => {
+        if (e.target.value === '' || Number.isNaN(parseFloat(e.target.value))) {
+          e.target.value = '0';
+        }
+        handleValueChange(e.target.value);
+      });
+
+      // Listener de barra deslizante
+      tempSlider.addEventListener('input', (e) => {
+        tempInput.value = e.target.value;
+        handleValueChange(e.target.value);
+      });
+
+      // Botones - y +
+      btnDecrease.addEventListener('click', () => {
+        const current = parseFloat(tempInput.value) || 0;
+        const next = Number((current - 1).toFixed(2));
+        tempInput.value = formatScaleValue(next);
+        handleValueChange(next);
+      });
+
+      btnIncrease.addEventListener('click', () => {
+        const current = parseFloat(tempInput.value) || 0;
+        const next = Number((current + 1).toFixed(2));
+        tempInput.value = formatScaleValue(next);
+        handleValueChange(next);
+      });
+      // Arranque inicial
+      syncOriginControls(true);
+      renderThermometers();
+    });
+  </script>
+</body>
+</html>
